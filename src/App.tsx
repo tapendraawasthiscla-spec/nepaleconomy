@@ -9,6 +9,7 @@ import ConsentBanner from './components/ConsentBanner';
 import FloatingBackToTop from './components/FloatingBackToTop';
 import AdminFAB from './components/AdminFAB';
 import AdminDashboard from './components/AdminDashboard';
+import HeroCarousel from './components/HeroCarousel';
 
 // Modular category view pages
 import EconomyPage from './pages/EconomyPage';
@@ -242,49 +243,15 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Primetime Main Hero Story Display */}
-                  {heroArticle && !searchQuery && (
-                    <div 
-                      onClick={() => handleSelectArticle(heroArticle)}
-                      className="group cursor-pointer bg-white dark:bg-secondary-navy rounded-xl border border-border-warm dark:border-gray-800 overflow-hidden shadow-premium hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 text-left"
-                    >
-                      <div className="w-full h-[220px] sm:h-[380px] overflow-hidden relative select-none">
-                        <img 
-                          src={heroArticle.imageUrl} 
-                          alt={heroArticle.title}
-                          className="w-full h-full object-cover duration-500 transition-transform group-hover:scale-[1.01]"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute top-4 left-4 bg-primary-crimson text-white text-[10px] font-mono font-black uppercase tracking-wider py-1 px-3 rounded shadow-md border border-accent-gold/20 leading-none">
-                          COVER STORY
-                        </div>
-                      </div>
-
-                      <div className="p-6 md:p-8 space-y-3 text-left">
-                        <div className="flex items-center gap-2 select-none">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectCategory(heroArticle.category);
-                            }}
-                            className="px-2.5 py-0.5 text-[9.5px] font-mono font-extrabold uppercase bg-[#8B0000] text-white rounded cursor-pointer leading-none"
-                          >
-                            {heroArticle.category}
-                          </button>
-                          <span className="text-[11px] text-text-secondary select-none font-sans font-medium">
-                            • By {heroArticle.author} ({heroArticle.readTime})
-                          </span>
-                        </div>
-
-                        <h2 className="font-serif font-black text-2xl sm:text-3.5xl text-secondary-navy dark:text-white leading-tight tracking-tight group-hover:text-primary-crimson dark:group-hover:text-accent-gold group-hover:underline transition-colors text-left">
-                          {heroArticle.title}
-                        </h2>
-
-                        <p className="text-xs sm:text-sm text-text-secondary dark:text-gray-305 max-w-3xl leading-relaxed text-left font-light font-sans">
-                          {heroArticle.excerpt}
-                        </p>
-                      </div>
-                    </div>
+                  {/* Primetime Main Hero Carousel */}
+                  {!searchQuery && (
+                    <HeroCarousel
+                      articles={articles}
+                      onSelectArticle={handleSelectArticle}
+                      onSelectCategory={handleSelectCategory}
+                      isAdminMode={isAdminMode}
+                      fallbackArticle={heroArticle}
+                    />
                   )}
 
                   {/* Standard featured grid stream */}
