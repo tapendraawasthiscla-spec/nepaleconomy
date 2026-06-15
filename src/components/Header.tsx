@@ -20,7 +20,7 @@ async function verifyPassword(input: string): Promise<boolean> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  const hashConstant = 'cba3e479cde369d7b4ca5a6e87f864dd1f2112cf638f28c2e680e66fe6e01a88'; // SHA-256 for "nepal2024"
+  const hashConstant = '62ec8f2f1d70ff70c719c797c8610392bd1be98559a15147a211c4386aae95dd'; // SHA-256 for "nepal2024"
   return hashHex === hashConstant;
 }
 
