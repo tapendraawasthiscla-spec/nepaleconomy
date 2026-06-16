@@ -63,6 +63,7 @@ export default function Header({
     { id: 'economy', label: 'Economy' },
     { id: 'business', label: 'Business' },
     { id: 'reports', label: 'Reports & Data' },
+    { id: 'downloads', label: 'Downloads' },
     { id: 'policy', label: 'Policy & Gov' },
     { id: 'startups', label: 'Startups & Tech' },
     { id: 'global', label: 'Global Nepal' },
