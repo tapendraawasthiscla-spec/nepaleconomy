@@ -50,6 +50,11 @@ export default function Footer({ setActivePage, setIsAdminMode }: FooterProps) {
                 </button>
               </li>
               <li>
+                <button onClick={() => triggerPage('downloads')} className="hover:text-accent-gold hover:underline transition-colors cursor-pointer text-left font-bold">
+                  Downloads &amp; Legal Docs
+                </button>
+              </li>
+              <li>
                 <button onClick={() => triggerPage('about')} className="hover:text-accent-gold hover:underline transition-colors cursor-pointer text-left font-bold">
                   About Our Desk
                 </button>
