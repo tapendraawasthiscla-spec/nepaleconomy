@@ -20,6 +20,7 @@ import GlobalPage from './pages/GlobalPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import ReportsPage from './pages/ReportsPage';
+import DownloadsPage from './pages/DownloadsPage';
 
 // Article Detail page
 import ArticleDetail from './components/ArticleDetail';
@@ -440,6 +441,10 @@ export default function App() {
 
           {activePage === 'reports' && (
             <ReportsPage reports={reports} setReports={setReports} />
+          )}
+
+          {activePage === 'downloads' && (
+            <DownloadsPage isAdminMode={isAdminMode} />
           )}
 
           {activePage === 'detail' && selectedArticle && (
