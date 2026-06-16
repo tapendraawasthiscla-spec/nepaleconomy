@@ -1,6 +1,0 @@
-{
-  "name": "NepalEconomy",
-  "description": "Nepal's most trusted voice in business and economy. High-fidelity financial media platform delivering real-time datasets, administrative policy coverages, and industry reports.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
