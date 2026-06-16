@@ -33,7 +33,7 @@ export default function Footer({ setActivePage, setIsAdminMode }: FooterProps) {
       });
       if (res.ok) {
         setSuccess(true);
-        addToast('✓ Added email to private circular roster!', 'success');
+        addToast('Added email to subscriber list!', 'success');
         setEmailSub('');
         setTimeout(() => setSuccess(false), 4000);
       }
@@ -45,7 +45,6 @@ export default function Footer({ setActivePage, setIsAdminMode }: FooterProps) {
   return (
     <footer className="bg-nexus-void text-white font-sans border-t-2 border-nexus-cyan relative z-10 select-none text-left">
       
-      {/* Glow highlight mesh */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_left,_var(--tw-gradient-stops))] from-nexus-cyan/5 to-transparent pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-12 md:py-16 relative z-10">
@@ -55,14 +54,14 @@ export default function Footer({ setActivePage, setIsAdminMode }: FooterProps) {
           {/* Column 1: Logo, bio, social icons */}
           <div className="space-y-4">
             <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => triggerPage('home')}>
-              <div className="w-[16px] h-[16px] bg-nexus-cyan rounded flex items-center justify-center text-[10px] text-nexus-void font-bold animate-pulse text-center">N</div>
+              <div className="w-[18px] h-[18px] bg-nexus-cyan rounded flex items-center justify-center text-[10px] text-nexus-void font-bold animate-pulse text-center">NE</div>
               <span className="text-md sm:text-lg font-serif font-black text-white hover:text-nexus-cyan transition-colors">
-                NEXUS<span className="text-nexus-cyan">.OS</span>
+                Nepal<span className="text-nexus-cyan">Economy</span>
               </span>
             </div>
             
             <p className="text-[11.5px] leading-relaxed text-gray-400 font-sans font-light text-left">
-              Nepal's premium sovereign portal delivering factual economic metrics, hydropower transaction audits, tax statutes libraries, and investigative dispatches.
+              Nepal's premium business and economic intelligence portal delivering factual economic metrics, hydropower transaction audits, tax statutes libraries, and investigative dispatches.
             </p>
 
             <div className="flex items-center gap-3.5 pt-2 select-none text-left">
@@ -84,7 +83,7 @@ export default function Footer({ setActivePage, setIsAdminMode }: FooterProps) {
             </div>
           </div>
 
-          {/* Column 2: News / Categorical channels */}
+          {/* Column 2: News */}
           <div className="space-y-4 text-left">
             <h4 className="text-[10px] uppercase font-mono tracking-widest text-nexus-cyan border-b border-nexus-border pb-1.5 font-black text-left">
               News Desks
@@ -98,31 +97,31 @@ export default function Footer({ setActivePage, setIsAdminMode }: FooterProps) {
             </ul>
           </div>
 
-          {/* Column 3: Resources links */}
+          {/* Column 3: Resources */}
           <div className="space-y-4 text-left">
             <h4 className="text-[10px] uppercase font-mono tracking-widest text-nexus-cyan border-b border-nexus-border pb-1.5 font-black text-left">
-              Sovereign Resources
+              Resources
             </h4>
             <ul className="space-y-2 text-[12px] text-gray-300 font-sans font-light text-left select-none">
               <li><button onClick={() => triggerPage('reports')} className="hover:text-nexus-cyan transition-colors text-left cursor-pointer">Advisory Reports</button></li>
               <li><button onClick={() => triggerPage('downloads')} className="hover:text-nexus-cyan transition-colors text-left cursor-pointer">Downloads &amp; Statues</button></li>
-              <li><button onClick={() => triggerPage('contact')} className="hover:text-nexus-cyan transition-colors text-left cursor-pointer">Encrypted News Tip Box</button></li>
-              <li><button onClick={() => triggerPage('about')} className="hover:text-nexus-cyan transition-colors text-left cursor-pointer">Creed &amp; Desks</button></li>
+              <li><button onClick={() => triggerPage('contact')} className="hover:text-nexus-cyan transition-colors text-left cursor-pointer">Contact &amp; Tip Box</button></li>
+              <li><button onClick={() => triggerPage('about')} className="hover:text-nexus-cyan transition-colors text-left cursor-pointer">About Us</button></li>
             </ul>
           </div>
 
-          {/* Column 4: Newsletter broadcast form & contact credentials */}
+          {/* Column 4: Newsletter */}
           <div className="space-y-4 text-left">
             <h4 className="text-[10px] uppercase font-mono tracking-widest text-nexus-cyan border-b border-nexus-border pb-1.5 font-black text-left">
               Follow Briefs
             </h4>
             <p className="text-[11.5px] leading-relaxed text-gray-400 font-sans font-light text-left">
-              Join 18,000+ central banking officers and international asset managers receiving private circular indices.
+              Join thousands of central banking officers and asset managers receiving daily intelligence indices.
             </p>
 
             {success ? (
               <div className="p-2.5 bg-nexus-green/10 border border-nexus-green/20 text-nexus-green text-[10px] font-mono rounded-lg">
-                ✓ Secure email added. Thank you.
+                Email added successfully. Thank you.
               </div>
             ) : (
               <form onSubmit={handleSubscribe} className="flex gap-1.5 select-none w-full">
@@ -145,7 +144,7 @@ export default function Footer({ setActivePage, setIsAdminMode }: FooterProps) {
 
             <div className="flex items-center gap-1.5 text-gray-500 text-[9.5px] font-mono select-none pt-1">
               <ShieldCheck className="w-4 h-4 text-nexus-green shrink-0" />
-              <span>SSL EXCRYPTED DELIVERY DATA</span>
+              <span>SSL ENCRYPTED DELIVERY</span>
             </div>
           </div>
 
@@ -157,21 +156,19 @@ export default function Footer({ setActivePage, setIsAdminMode }: FooterProps) {
             <span>|</span>
             <button onClick={() => triggerPage('about')} className="hover:text-nexus-cyan cursor-pointer font-light">Privacy Guidelines</button>
             <span>|</span>
-            <button onClick={() => triggerPage('about')} className="hover:text-nexus-cyan cursor-pointer font-light">Corrections logs</button>
+            <button onClick={() => triggerPage('about')} className="hover:text-nexus-cyan cursor-pointer font-light">Corrections</button>
           </div>
 
           <button 
             type="button"
             onClick={() => {
-              // Trigger password gate modal by finding admin button trigger or invoking login action directly.
-              // Letting them login over the header Press Studio represents the standard flow.
               window.scrollTo({ top: 0, behavior: 'instant' as any });
               setIsAdminMode(false);
-              addToast('Click "Press Studio" in header and provide validation passkey.', 'info');
+              addToast('Click "Studio" in header and provide your admin passkey.', 'info');
             }}
             className="text-nexus-cyan hover:underline font-mono uppercase font-black tracking-widest text-[9.5px] cursor-pointer"
           >
-            Press Suite Login
+            Admin Login
           </button>
         </div>
 
