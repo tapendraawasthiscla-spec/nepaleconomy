@@ -1,6 +1,0 @@
-{
-  "name": "NepalEconomy.com",
-  "description": "Nepal's premium Business and Economic Intelligence News Portal featuring live market metrics, sovereign research reports, tax laws library, and anonymous whistleblower portals.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
