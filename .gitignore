@@ -1,0 +1,22 @@
+# Python defaults
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+env.bak/
+venv.bak/
+
+# Environment variables
+.env
+
+# Uploads directory
+uploads/
+
+# IDEs and OS
+.vscode/
+.idea/
+.DS_Store
