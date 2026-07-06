@@ -1,0 +1,12 @@
+{
+  "name": "nepaleconomy",
+  "version": "1.0.0",
+  "description": "Placeholder for new website",
+  "scripts": {
+    "build": "echo 'Ready for new website'",
+    "start": "echo 'Ready for new website'"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
