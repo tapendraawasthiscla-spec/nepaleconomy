@@ -4,7 +4,7 @@
   "description": "Placeholder for new website",
   "scripts": {
     "build": "echo 'Ready for new website'",
-    "start": "echo 'Ready for new website'"
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
