@@ -1,5 +1,5 @@
 """
-DOCX handler utilizing python-docx.
+DOCX handler utilizing python-docx with legacy font conversion.
 """
 import io
 from typing import Dict, Any
@@ -7,9 +7,11 @@ import docx
 
 from app.legacy_fonts.converter import convert_legacy_text, is_legacy_font
 
+
 def extract_docx(docx_bytes: bytes) -> Dict[str, Any]:
     """
     Extracts text from DOCX files and converts legacy fonts dynamically.
+    Handles paragraphs and tables.
     """
     try:
         doc = docx.Document(io.BytesIO(docx_bytes))
@@ -22,19 +24,19 @@ def extract_docx(docx_bytes: bytes) -> Dict[str, Any]:
 
     def process_paragraph(p) -> str:
         nonlocal had_legacy
-        
+
         para_font = None
         if p.style and p.style.font and p.style.font.name:
             para_font = p.style.font.name
-            
+
         para_text = []
         for run in p.runs:
             raw_text = run.text
             if not raw_text:
                 continue
-                
+
             font_name = run.font.name if run.font and run.font.name else para_font
-            
+
             if font_name is None:
                 detected_fonts.add("font-unknown")
                 para_text.append(raw_text)
@@ -49,7 +51,7 @@ def extract_docx(docx_bytes: bytes) -> Dict[str, Any]:
 
     for p in doc.paragraphs:
         text_blocks.append(process_paragraph(p))
-        
+
     for table in doc.tables:
         for row in table.rows:
             row_data = []
@@ -59,9 +61,9 @@ def extract_docx(docx_bytes: bytes) -> Dict[str, Any]:
                     cell_text.append(process_paragraph(p))
                 row_data.append(" ".join(cell_text).strip())
             text_blocks.append(" | ".join(row_data))
-            
+
     final_text = "\n".join(text_blocks).strip()
-    
+
     return {
         "text": final_text,
         "had_legacy_fonts": had_legacy,

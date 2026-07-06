@@ -1,9 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
-import io
 
 client = TestClient(app)
+
 
 def test_health_check():
     response = client.get("/api/health")
@@ -11,6 +11,7 @@ def test_health_check():
     data = response.json()
     assert data["status"] == "ok"
     assert "languages" in data
+
 
 def test_extract_invalid_extension():
     file_content = b"fake file content"
@@ -22,8 +23,8 @@ def test_extract_invalid_extension():
     assert response.status_code == 400
     assert "File type .txt not allowed" in response.json()["detail"]
 
+
 def test_extract_invalid_lang():
-    # Use a valid image extension to bypass extension check
     file_content = b"fake image"
     response = client.post(
         "/api/extract",
