@@ -1,5 +1,5 @@
 """
-Main FastAPI application entry point.
+Main FastAPI application.
 """
 import os
 from fastapi import FastAPI, UploadFile, File, Form, Request
@@ -17,7 +17,7 @@ from app.logging_config import get_logger
 
 logger = get_logger("TextExtract")
 
-app = FastAPI(title="TextExtract")
+app = FastAPI(title="TextExtract", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,47 +32,54 @@ app.add_middleware(
 async def startup_event():
     configure_tesseract()
     langs = available_languages()
-    logger.info(f"Available Tesseract languages: {langs}")
+    logger.info(f"Tesseract languages: {langs}")
     if "nep" not in langs:
-        logger.warning("CRITICAL: 'nep' language pack is NOT installed.")
+        logger.warning("'nep' language pack NOT installed. Nepali OCR will fail.")
+    
+    # Check npttf2utf
+    try:
+        from npttf2utf import npttf2utf
+        logger.info("npttf2utf loaded successfully - legacy font conversion available")
+    except ImportError:
+        logger.warning("npttf2utf NOT installed. Legacy font conversion will be limited.")
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
+    logger.error(f"Unhandled: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"success": False, "detail": "An internal server error occurred.", "error": str(exc)}
+        content={"success": False, "detail": "Internal server error", "error": str(exc)}
     )
 
 
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
-    logger.warning(f"Validation error: {str(exc)}")
-    return JSONResponse(
-        status_code=400,
-        content={"success": False, "detail": str(exc)}
-    )
+    return JSONResponse(status_code=400, content={"success": False, "detail": str(exc)})
 
 
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint."""
     langs = available_languages()
-    return {"status": "ok", "languages": langs}
+    try:
+        from npttf2utf import npttf2utf
+        legacy_support = True
+    except ImportError:
+        legacy_support = False
+    return {
+        "status": "ok",
+        "languages": langs,
+        "legacy_font_support": legacy_support,
+    }
 
 
 @app.post("/api/extract")
 async def extract_api(
     file: UploadFile = File(...),
-    lang: str = Form("auto")
+    lang: str = Form("auto"),
 ):
-    """
-    Main extraction endpoint.
-    Accepts PDF, DOCX, and images. Returns extracted text.
-    """
-    if lang not in ["auto", "eng", "nep", "eng+nep"]:
-        raise ValueError(f"Invalid language requested: {lang}")
+    if lang not in ("auto", "eng", "nep", "eng+nep"):
+        raise ValueError(f"Invalid language: {lang}")
 
     filename = file.filename or "unknown"
     ext = os.path.splitext(filename)[1].lower()
@@ -84,21 +91,16 @@ async def extract_api(
     size_mb = len(file_bytes) / (1024 * 1024)
 
     if size_mb > MAX_FILE_SIZE_MB:
-        raise ValueError(f"File size ({size_mb:.1f} MB) exceeds limit of {MAX_FILE_SIZE_MB} MB.")
+        raise ValueError(f"File ({size_mb:.1f}MB) exceeds {MAX_FILE_SIZE_MB}MB limit.")
 
-    logger.info(f"Processing file: {filename} ({size_mb:.2f} MB), lang: {lang}")
+    logger.info(f"Processing: {filename} ({size_mb:.2f}MB), lang={lang}")
 
-    try:
-        if ext == ".pdf":
-            result = await run_in_threadpool(extract_pdf, file_bytes, lang)
-        elif ext == ".docx":
-            result = await run_in_threadpool(extract_docx, file_bytes)
-        else:
-            result = await run_in_threadpool(extract_image, file_bytes, lang)
-    except ValueError as e:
-        raise e
-    except Exception as e:
-        raise Exception(f"Failed to process {ext} file: {str(e)}")
+    if ext == ".pdf":
+        result = await run_in_threadpool(extract_pdf, file_bytes, lang)
+    elif ext == ".docx":
+        result = await run_in_threadpool(extract_docx, file_bytes)
+    else:
+        result = await run_in_threadpool(extract_image, file_bytes, lang)
 
     text = result.pop("text", "")
 
@@ -107,12 +109,11 @@ async def extract_api(
         "text": text,
         "filename": filename,
         "lang": lang,
-        "meta": result
+        "meta": result,
     }
 
 
+# Mount frontend last
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 if os.path.exists(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
-else:
-    logger.warning(f"Frontend directory not found at {frontend_dir}. UI will not be served.")

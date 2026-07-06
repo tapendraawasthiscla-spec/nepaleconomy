@@ -1,81 +1,64 @@
 """
 Core conversion engine for legacy Nepali fonts to Unicode.
-Uses a 2-stage pipeline: char-map substitution -> post-rules (regex).
+Uses npttf2utf library for accurate, battle-tested mappings.
 """
-import re
-from typing import Optional
 from functools import lru_cache
-from app.legacy_fonts.mappings import FONT_REGISTRY, SHARED_POST_RULES
+from typing import Optional
 
+from app.legacy_fonts.mappings import is_legacy_font, get_npttf2utf_map_name
 
-class LegacyFontConverter:
-    """
-    High-performance rule-based converter for mapping legacy Nepali ASCII fonts
-    to Unicode Devanagari.
-    """
-    def __init__(self, char_map: dict, post_rules: list):
-        self.char_map = char_map
-        # Compile post-rules once
-        self.post_rules = []
-        for pattern, replacement in post_rules:
-            if pattern:  # skip empty patterns
-                try:
-                    self.post_rules.append((re.compile(pattern), replacement))
-                except re.error:
-                    pass  # skip invalid regex patterns
-
-        # Build a single regex matching all char_map keys, longest first
-        sorted_keys = sorted(char_map.keys(), key=len, reverse=True)
-        escaped_keys = [re.escape(k) for k in sorted_keys if k]
-        if escaped_keys:
-            pattern = "|".join(escaped_keys)
-            self.char_regex = re.compile(pattern)
-        else:
-            self.char_regex = None
-
-    def convert(self, text: str) -> str:
-        """Converts a legacy font string to Unicode."""
-        if not text:
-            return text
-
-        # STAGE 1: Character Map Substitution
-        if self.char_regex:
-            text = self.char_regex.sub(
-                lambda m: self.char_map.get(m.group(0), m.group(0)), text
-            )
-
-        # STAGE 2: Post-Rules (regex-based reordering and cleanup)
-        for pattern, replacement in self.post_rules:
-            text = pattern.sub(replacement, text)
-
-        return text
+try:
+    from npttf2utf import npttf2utf
+    _HAS_NPTTF2UTF = True
+except ImportError:
+    _HAS_NPTTF2UTF = False
 
 
 @lru_cache(maxsize=32)
-def get_converter(font_name: str) -> Optional[LegacyFontConverter]:
-    """Returns a cached LegacyFontConverter instance for the given font name, or None."""
-    font_key = font_name.lower().strip()
-    for known_font, mapping in FONT_REGISTRY.items():
-        if known_font in font_key:
-            return LegacyFontConverter(mapping, SHARED_POST_RULES)
-    return None
-
-
-def is_legacy_font(font_name: str) -> bool:
-    """Checks if the font name matches known legacy Nepali fonts."""
-    if not font_name:
-        return False
-    font_key = font_name.lower()
-    return any(legacy in font_key for legacy in FONT_REGISTRY.keys())
+def _get_converter(map_name: str):
+    """
+    Returns a cached npttf2utf converter instance for the given map name.
+    """
+    if not _HAS_NPTTF2UTF:
+        return None
+    try:
+        converter = npttf2utf.FontConverter(map_name)
+        return converter
+    except Exception:
+        return None
 
 
 def convert_legacy_text(text: str, font_name: str) -> str:
-    """Main entry point for converting text based on font detection."""
-    converter = get_converter(font_name)
-    if converter:
-        return converter.convert(text)
-    return text
+    """
+    Converts legacy-font-encoded text to proper Unicode Devanagari.
+    
+    Args:
+        text: The raw text extracted from the PDF/DOCX (ASCII-encoded Devanagari)
+        font_name: The font name detected from the document
+        
+    Returns:
+        Unicode Devanagari text
+    """
+    if not text or not text.strip():
+        return text
+
+    if not is_legacy_font(font_name):
+        return text
+
+    map_name = get_npttf2utf_map_name(font_name)
+    converter = _get_converter(map_name)
+
+    if converter is None:
+        # If npttf2utf is not available, return raw text with a marker
+        return text
+
+    try:
+        converted = converter.convert(text)
+        return converted if converted else text
+    except Exception:
+        return text
 
 
-# Alias for backwards compatibility
-smart_convert = convert_legacy_text
+def smart_convert(text: str, font_name: str) -> str:
+    """Alias for convert_legacy_text for backward compatibility."""
+    return convert_legacy_text(text, font_name)

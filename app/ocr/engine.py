@@ -1,9 +1,9 @@
 """
-Tesseract OCR engine wrapper with intelligent language selection.
+Tesseract OCR engine wrapper with multi-language support.
 """
 import pytesseract
 import numpy as np
-from app.config import DEFAULT_OCR_CONFIG, FALLBACK_OCR_CONFIG, configure_tesseract
+from app.config import DEFAULT_OCR_CONFIG, configure_tesseract
 from app.logging_config import get_logger
 
 logger = get_logger("OCREngine")
@@ -12,7 +12,7 @@ configure_tesseract()
 
 
 def available_languages() -> list[str]:
-    """Returns a list of installed Tesseract traineddata languages."""
+    """Returns installed Tesseract language packs."""
     try:
         return pytesseract.get_languages(config='')
     except Exception:
@@ -21,19 +21,19 @@ def available_languages() -> list[str]:
 
 def run_ocr(image: np.ndarray, lang: str, config: str = None) -> dict:
     """
-    Runs Tesseract OCR on the given image and returns structured results.
-    Includes automatic PSM fallback if no text is found.
+    Run Tesseract on an image and return structured results.
     """
     if config is None:
         config = DEFAULT_OCR_CONFIG
 
     try:
         data = pytesseract.image_to_data(
-            image, lang=lang, config=config, output_type=pytesseract.Output.DICT
+            image, lang=lang, config=config,
+            output_type=pytesseract.Output.DICT
         )
     except Exception as e:
         raise RuntimeError(
-            f"OCR execution failed. Ensure tesseract-ocr and language packs are installed. Details: {e}"
+            f"OCR failed. Ensure tesseract-ocr and lang packs are installed. Error: {e}"
         )
 
     n_boxes = len(data['level'])
@@ -77,39 +77,54 @@ def run_ocr(image: np.ndarray, lang: str, config: str = None) -> dict:
 
     full_text = "\n".join(text_lines).strip()
 
-    # Fallback: try PSM 6 if no text found with default PSM
-    if not full_text and config == DEFAULT_OCR_CONFIG:
-        logger.info("No text found with default PSM, trying fallback PSM 6")
-        return run_ocr(image, lang=lang, config=FALLBACK_OCR_CONFIG)
+    # Fallback: if no text found with PSM 3, try PSM 6 (uniform block)
+    if not full_text and '--psm 3' in (config or ''):
+        fallback_config = config.replace('--psm 3', '--psm 6')
+        return run_ocr(image, lang=lang, config=fallback_config)
 
     mean_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
     return {
         "text": full_text,
-        "mean_confidence": mean_conf,
-        "word_count": word_count
+        "mean_confidence": round(mean_conf, 2),
+        "word_count": word_count,
+        "lang_used": lang,
     }
 
 
 def ocr_with_best_lang(image: np.ndarray) -> dict:
     """
-    Runs OCR with 'eng', 'nep', and 'eng+nep' and returns the
-    highest confidence result. This is the auto-detection strategy.
+    Try multiple language combinations and return the best result.
     """
-    candidates = ["eng", "nep", "eng+nep"]
-    best_result = None
-    best_conf = -1.0
+    langs_available = available_languages()
+    
+    candidates = []
+    if "eng" in langs_available:
+        candidates.append("eng")
+    if "nep" in langs_available:
+        candidates.append("nep")
+    if "eng" in langs_available and "nep" in langs_available:
+        candidates.append("eng+nep")
+    
+    if not candidates:
+        candidates = ["eng"]
 
-    for l in candidates:
+    best_result = None
+    best_score = -1.0
+
+    for lang in candidates:
         try:
-            res = run_ocr(image, lang=l)
-            if res["text"] and res["mean_confidence"] > best_conf:
-                best_conf = res["mean_confidence"]
-                best_result = res
+            res = run_ocr(image, lang=lang)
         except Exception:
             continue
 
+        # Score: confidence weighted by word count (more words = more reliable)
+        score = res["mean_confidence"] * min(res["word_count"], 50) / 50.0
+        if res["text"] and score > best_score:
+            best_score = score
+            best_result = res
+
     if best_result is None:
-        return {"text": "", "mean_confidence": 0.0, "word_count": 0}
+        return {"text": "", "mean_confidence": 0.0, "word_count": 0, "lang_used": "none"}
 
     return best_result

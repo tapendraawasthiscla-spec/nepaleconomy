@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     poppler-utils \
@@ -10,25 +9,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Download tessdata_best for eng and nep
+# Download best-quality traineddata for eng and nep
 RUN mkdir -p /usr/share/tesseract-ocr/5/tessdata && \
-    wget -q https://github.com/tesseract-ocr/tessdata_best/raw/main/eng.traineddata -O /usr/share/tesseract-ocr/5/tessdata/eng.traineddata && \
-    wget -q https://github.com/tesseract-ocr/tessdata_best/raw/main/nep.traineddata -O /usr/share/tesseract-ocr/5/tessdata/nep.traineddata
+    wget -q https://github.com/tesseract-ocr/tessdata_best/raw/main/eng.traineddata \
+         -O /usr/share/tesseract-ocr/5/tessdata/eng.traineddata && \
+    wget -q https://github.com/tesseract-ocr/tessdata_best/raw/main/nep.traineddata \
+         -O /usr/share/tesseract-ocr/5/tessdata/nep.traineddata
 
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 
 WORKDIR /app
 
-# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
 COPY . .
-
-# Ensure frontend directory exists
 RUN mkdir -p frontend
 
 EXPOSE 8000
-
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

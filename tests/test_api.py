@@ -11,25 +11,24 @@ def test_health_check():
     data = response.json()
     assert data["status"] == "ok"
     assert "languages" in data
+    assert "legacy_font_support" in data
 
 
 def test_extract_invalid_extension():
-    file_content = b"fake file content"
     response = client.post(
         "/api/extract",
-        files={"file": ("test.txt", file_content, "text/plain")},
-        data={"lang": "auto"}
+        files={"file": ("test.txt", b"content", "text/plain")},
+        data={"lang": "auto"},
     )
     assert response.status_code == 400
-    assert "File type .txt not allowed" in response.json()["detail"]
+    assert "not allowed" in response.json()["detail"]
 
 
 def test_extract_invalid_lang():
-    file_content = b"fake image"
     response = client.post(
         "/api/extract",
-        files={"file": ("test.png", file_content, "image/png")},
-        data={"lang": "invalid_lang"}
+        files={"file": ("test.png", b"fake", "image/png")},
+        data={"lang": "xyz"},
     )
     assert response.status_code == 400
     assert "Invalid language" in response.json()["detail"]

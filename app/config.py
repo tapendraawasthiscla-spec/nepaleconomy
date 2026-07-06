@@ -1,27 +1,25 @@
 """
 Configuration constants and startup setup for the TextExtract backend.
 """
-
 import os
 import pytesseract
 
+# File limitations
 MAX_FILE_SIZE_MB: int = 25
 ALLOWED_EXTENSIONS: set[str] = {
     ".pdf", ".docx", ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"
 }
 
+# Tesseract config
 TESSERACT_CMD: str = os.getenv("TESSERACT_CMD", "tesseract")
-DEFAULT_DPI: int = 300
 
-# OEM 1 = LSTM only (best for accuracy with tessdata_best)
-# PSM 3 = Fully automatic page segmentation (default)
+# OEM 1 = LSTM only (best for Devanagari), PSM 3 = fully automatic
 DEFAULT_OCR_CONFIG: str = r'--oem 1 --psm 3'
-# PSM 6 = Assume a single uniform block of text
-FALLBACK_OCR_CONFIG: str = r'--oem 1 --psm 6'
-# PSM 4 = Assume a single column of text of variable sizes
-COLUMN_OCR_CONFIG: str = r'--oem 1 --psm 4'
+
+# Higher DPI for PDF-to-image rendering (better OCR accuracy)
+PDF_RENDER_DPI: int = 300
 
 
 def configure_tesseract() -> None:
-    """Configure the Tesseract command path for pytesseract."""
+    """Configure the Tesseract command path."""
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
