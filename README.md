@@ -37,3 +37,54 @@ Extracts text from the uploaded file.
 
 - **Response:**
   Returns a JSON payload with the extracted text.
+
+## Docker Deployment
+
+To build and run TextExtract with Docker (which automatically handles system dependencies like Tesseract and Poppler):
+
+```bash
+docker-compose up --build
+```
+The application will be available at `http://localhost:8000`.
+
+### Verifying Nepali OCR Support
+To verify that the `nep` language pack is successfully installed in the container:
+```bash
+docker exec <container_name_or_id> tesseract --list-langs
+```
+You should see `nep` in the output list.
+
+## API Schema & Examples
+
+### Endpoint: `POST /api/extract`
+
+**cURL Example (Image, Auto Language):**
+```bash
+curl -X POST http://localhost:8000/api/extract \
+  -F 'file=@/path/to/scan.jpg' \
+  -F 'lang=auto'
+```
+
+**cURL Example (Preeti PDF, Nepali):**
+```bash
+curl -X POST http://localhost:8000/api/extract \
+  -F 'file=@/path/to/document.pdf' \
+  -F 'lang=nep'
+```
+
+**Response Schema:**
+```json
+{
+  "success": true,
+  "text": "Extracted unicode text here...",
+  "filename": "scan.jpg",
+  "lang": "auto",
+  "meta": {
+    "method": "ocr",
+    "mean_confidence": 85.5
+  }
+}
+```
+
+## Extending Legacy Fonts
+To add support for other legacy fonts like Kantipur or Sagarmatha, simply fill their respective maps in `app/legacy_fonts/mappings.py`. Follow the same three-stage structure (Pre-rules, Char-map, Post-rules) as the `PREETI_MAP`.
