@@ -1,18 +1,17 @@
 """
 PDF handler utilizing PyMuPDF (fitz) and Tesseract OCR fallback.
 """
-
 import fitz  # PyMuPDF
 from typing import Dict, Any
 import numpy as np
 
-from app.legacy_fonts.converter import smart_convert, is_legacy_font
+from app.legacy_fonts.converter import convert_legacy_text, is_legacy_font
 from app.ocr.preprocess import preprocess_for_ocr
 from app.ocr.engine import ocr_with_best_lang, run_ocr
 
 def extract_pdf(pdf_bytes: bytes, lang: str = "auto") -> Dict[str, Any]:
     """
-    Extracts text from a PDF. Iterates blocks and spans. 
+    Extracts text from a PDF. 
     Converts legacy Nepali fonts if found in the text layer.
     Falls back to OCR if the page has mostly images and very little extractable text.
     """
@@ -29,7 +28,6 @@ def extract_pdf(pdf_bytes: bytes, lang: str = "auto") -> Dict[str, Any]:
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
         
-        # 1. Attempt digital text layer extraction
         page_dict = page.get_text("dict")
         page_text_lines = []
         char_count = 0
@@ -45,10 +43,9 @@ def extract_pdf(pdf_bytes: bytes, lang: str = "auto") -> Dict[str, Any]:
                         
                         raw_text = span.get("text", "")
                         
-                        # 2. Check and convert legacy font spans
                         if is_legacy_font(font_name):
                             had_legacy = True
-                            converted = smart_convert(raw_text, font_name)
+                            converted = convert_legacy_text(raw_text, font_name)
                             line_spans.append(converted)
                             char_count += len(converted.strip())
                         else:
@@ -60,26 +57,21 @@ def extract_pdf(pdf_bytes: bytes, lang: str = "auto") -> Dict[str, Any]:
                 
         extracted_page_text = "\n\n".join(page_text_lines).strip()
         
-        # 3. Determine if OCR is needed (empty or scanned image page)
         if char_count < 10:
-            # Treat as scanned, run OCR
             methods.append("ocr")
             pix = page.get_pixmap(dpi=300)
             
-            # Convert PyMuPDF pixmap to numpy BGR array
             if pix.n >= 3:
                 img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
                 if pix.n == 4:
-                    img_bgr = img_array[:, :, [2, 1, 0, 3]] # RGBA to BGRA
-                    # Drop alpha by adding white background
+                    img_bgr = img_array[:, :, [2, 1, 0, 3]]
                     bgr = img_bgr[:, :, :3]
                     alpha = img_bgr[:, :, 3].astype(float) / 255.0
                     bg = np.ones_like(bgr, dtype=np.float64) * 255.0
                     img_bgr = (bgr * alpha[..., None] + bg * (1.0 - alpha[..., None])).astype(np.uint8)
                 else:
-                    img_bgr = img_array[:, :, [2, 1, 0]] # RGB to BGR
+                    img_bgr = img_array[:, :, [2, 1, 0]]
             else:
-                # Grayscale
                 img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w)
                 img_bgr = np.stack((img_array,)*3, axis=-1)
                 
@@ -97,7 +89,6 @@ def extract_pdf(pdf_bytes: bytes, lang: str = "auto") -> Dict[str, Any]:
             
     doc.close()
     
-    # 4. Concatenate pages with a page separator
     final_text = "\n\n--- Page Break ---\n\n".join(full_text)
     
     return {

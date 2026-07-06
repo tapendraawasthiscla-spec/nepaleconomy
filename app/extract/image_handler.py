@@ -1,7 +1,6 @@
 """
 Image handler utilizing preprocessing and Tesseract OCR.
 """
-
 from typing import Dict, Any
 
 from app.ocr.preprocess import load_image_bytes, preprocess_for_ocr
@@ -16,7 +15,6 @@ def extract_image(image_bytes: bytes, lang: str = "auto") -> Dict[str, Any]:
     except Exception as e:
         raise ValueError(f"Failed to process image: {e}")
         
-    # 1. Normal preprocessing and OCR
     clean_img = preprocess_for_ocr(image_bgr, aggressive=False)
     
     if lang == "auto":
@@ -24,7 +22,6 @@ def extract_image(image_bytes: bytes, lang: str = "auto") -> Dict[str, Any]:
     else:
         res = run_ocr(clean_img, lang)
         
-    # 2. Retry with aggressive preprocessing if confidence is low
     if res["mean_confidence"] > 0 and res["mean_confidence"] < 60:
         clean_img_agg = preprocess_for_ocr(image_bgr, aggressive=True)
         if lang == "auto":
@@ -32,7 +29,6 @@ def extract_image(image_bytes: bytes, lang: str = "auto") -> Dict[str, Any]:
         else:
             res_agg = run_ocr(clean_img_agg, lang)
             
-        # Keep aggressive result if it has better confidence
         if res_agg["mean_confidence"] > res["mean_confidence"]:
             res = res_agg
             

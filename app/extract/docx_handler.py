@@ -1,12 +1,11 @@
 """
 DOCX handler utilizing python-docx.
 """
-
 import io
 from typing import Dict, Any
 import docx
 
-from app.legacy_fonts.converter import smart_convert, is_legacy_font
+from app.legacy_fonts.converter import convert_legacy_text, is_legacy_font
 
 def extract_docx(docx_bytes: bytes) -> Dict[str, Any]:
     """
@@ -24,7 +23,6 @@ def extract_docx(docx_bytes: bytes) -> Dict[str, Any]:
     def process_paragraph(p) -> str:
         nonlocal had_legacy
         
-        # Determine paragraph-level style font as fallback
         para_font = None
         if p.style and p.style.font and p.style.font.name:
             para_font = p.style.font.name
@@ -44,16 +42,14 @@ def extract_docx(docx_bytes: bytes) -> Dict[str, Any]:
                 detected_fonts.add(font_name)
                 if is_legacy_font(font_name):
                     had_legacy = True
-                    para_text.append(smart_convert(raw_text, font_name))
+                    para_text.append(convert_legacy_text(raw_text, font_name))
                 else:
                     para_text.append(raw_text)
         return "".join(para_text)
 
-    # Process paragraphs
     for p in doc.paragraphs:
         text_blocks.append(process_paragraph(p))
         
-    # Process tables
     for table in doc.tables:
         for row in table.rows:
             row_data = []

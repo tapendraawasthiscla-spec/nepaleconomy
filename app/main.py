@@ -1,9 +1,8 @@
 """
 Main FastAPI application entry point.
 """
-
 import os
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -18,9 +17,10 @@ from app.logging_config import get_logger
 
 logger = get_logger("TextExtract")
 
+# 1. Create FastAPI app
 app = FastAPI(title="TextExtract")
 
-# CORS for dev
+# 2. Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,13 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve Frontend
-frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
-if os.path.exists(frontend_dir):
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
-else:
-    logger.warning(f"Frontend directory not found at {frontend_dir}. UI will not be served.")
-
+# 3. Define startup event
 @app.on_event("startup")
 async def startup_event():
     configure_tesseract()
@@ -45,9 +39,9 @@ async def startup_event():
     if "nep" not in langs:
         logger.warning("CRITICAL: 'nep' language pack is NOT installed. Nepali OCR will fail.")
 
+# 4. Define exception handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Generic catch-all for unhandled server errors to prevent leaking stack traces."""
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=500,
@@ -56,19 +50,20 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
-    """Handles bad inputs and file parsing errors."""
     logger.warning(f"Validation error: {str(exc)}")
     return JSONResponse(
         status_code=400,
         content={"success": False, "detail": str(exc)}
     )
 
+# 5. Define GET /api/health
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
     langs = available_languages()
     return {"status": "ok", "languages": langs}
 
+# 6. Define POST /api/extract
 @app.post("/api/extract")
 async def extract_api(
     file: UploadFile = File(...),
@@ -96,7 +91,6 @@ async def extract_api(
     if size_mb > MAX_FILE_SIZE_MB:
         raise ValueError(f"File size ({size_mb:.1f} MB) exceeds limit of {MAX_FILE_SIZE_MB} MB.")
         
-    # Route to appropriate handler in a threadpool
     logger.info(f"Processing file: {filename} ({size_mb:.2f} MB), lang: {lang}")
     
     try:
@@ -105,13 +99,10 @@ async def extract_api(
         elif ext == ".docx":
             result = await run_in_threadpool(extract_docx, file_bytes)
         else:
-            # Image formats
             result = await run_in_threadpool(extract_image, file_bytes, lang)
     except ValueError as e:
-        # Re-raise ValueErrors to be caught by the exception handler
         raise e
     except Exception as e:
-        # Wrap unknown processing errors
         raise Exception(f"Failed to process {ext} file: {str(e)}")
         
     text = result.pop("text", "")
@@ -123,3 +114,10 @@ async def extract_api(
         "lang": lang,
         "meta": result
     }
+
+# 7. Mount StaticFiles at "/" LAST
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+if os.path.exists(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+else:
+    logger.warning(f"Frontend directory not found at {frontend_dir}. UI will not be served.")

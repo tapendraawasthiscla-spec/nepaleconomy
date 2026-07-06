@@ -1,65 +1,54 @@
 """
 Core conversion engine for legacy Nepali fonts to Unicode.
 """
-
 import re
 from typing import Optional
-from app.legacy_fonts.mappings import FONT_MAPS
+from functools import lru_cache
+from app.legacy_fonts.mappings import FONT_REGISTRY, SHARED_POST_RULES
 
 
-class PreetiConverter:
+class LegacyFontConverter:
     """
     High-performance rule-based converter for mapping legacy Nepali ASCII fonts 
-    to Unicode Devanagari.
+    to Unicode Devanagari using a 2-stage (char map -> post rules) pipeline.
     """
-    def __init__(self, mapping: dict):
-        self.pre_rules = [(re.compile(p), r) for p, r in mapping.get("pre_rules", [])]
-        self.post_rules = [(re.compile(p), r) for p, r in mapping.get("post_rules", [])]
-        
-        char_map = mapping.get("char_map", {})
+    def __init__(self, char_map: dict, post_rules: list):
         self.char_map = char_map
+        self.post_rules = [(re.compile(p), r) for p, r in post_rules]
         
-        if char_map:
-            # Sort keys by length descending to match longest tokens first (O(n) linear scan)
-            sorted_keys = sorted(char_map.keys(), key=len, reverse=True)
-            # Escape keys for regex
-            escaped_keys = map(re.escape, sorted_keys)
-            pattern = "|".join(escaped_keys)
-            self.char_regex = re.compile(pattern)
-        else:
-            self.char_regex = None
+        # Sort keys by length descending to match longest tokens first
+        sorted_keys = sorted(char_map.keys(), key=len, reverse=True)
+        # Escape keys for regex
+        escaped_keys = map(re.escape, sorted_keys)
+        pattern = "|".join(escaped_keys)
+        self.char_regex = re.compile(pattern)
 
     def convert(self, text: str) -> str:
         """
-        Converts a legacy font string to Unicode in a 3-stage pipeline.
+        Converts a legacy font string to Unicode.
         """
         if not text:
             return text
             
-        # STAGE 1: PRE-RULES
-        for pattern, replacement in self.pre_rules:
-            text = pattern.sub(replacement, text)
+        # STAGE 1: Character Map Substitution
+        text = self.char_regex.sub(lambda m: self.char_map[m.group(0)], text)
             
-        # STAGE 2: CHARACTER MAP
-        if self.char_regex:
-            text = self.char_regex.sub(lambda m: self.char_map[m.group(0)], text)
-            
-        # STAGE 3: POST-RULES
+        # STAGE 2: Post-Rules
         for pattern, replacement in self.post_rules:
             text = pattern.sub(replacement, text)
             
         return text
 
 
-def get_converter(font_name: str) -> Optional[PreetiConverter]:
+@lru_cache(maxsize=32)
+def get_converter(font_name: str) -> Optional[LegacyFontConverter]:
     """
-    Returns a PreetiConverter instance for the given font name, or None if unknown.
+    Returns a cached LegacyFontConverter instance for the given font name, or None.
     """
     font_key = font_name.lower().strip()
-    # Handle embedded font suffixes (e.g., Preeti-Bold -> preeti)
-    for known_font, mapping in FONT_MAPS.items():
+    for known_font, mapping in FONT_REGISTRY.items():
         if known_font in font_key:
-            return PreetiConverter(mapping)
+            return LegacyFontConverter(mapping, SHARED_POST_RULES)
     return None
 
 
@@ -70,21 +59,17 @@ def is_legacy_font(font_name: str) -> bool:
     if not font_name:
         return False
     font_key = font_name.lower()
-    known_legacy = ["preeti", "kantipur", "sagarmatha", "himali", "pcs"]
-    return any(legacy in font_key for legacy in known_legacy)
+    return any(legacy in font_key for legacy in FONT_REGISTRY.keys())
 
 
-def smart_convert(text: str, font_name: str) -> str:
+def convert_legacy_text(text: str, font_name: str) -> str:
     """
-    Converts text if the font is a legacy font. Otherwise returns text unchanged.
-    Leaves ASCII English words/numbers alone if the font isn't explicitly legacy.
-    Note: If font IS legacy, all text in that span is converted.
+    Main entry point for converting text based on font detection.
     """
-    if not is_legacy_font(font_name):
-        return text
-        
     converter = get_converter(font_name)
     if converter:
         return converter.convert(text)
-    
     return text
+
+# Alias for backwards compatibility with previous prompt
+smart_convert = convert_legacy_text
