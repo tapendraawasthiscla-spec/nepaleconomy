@@ -351,8 +351,12 @@ async function runOCRBatch(items, startPct, fileType) {
   const workers = [];
   for (let w = 0; w < numWorkers; w++) {
     try {
-      const worker = await Tesseract.createWorker(settings.lang, 1, { logger: () => {} });
-      await worker.setParameters({ tessedit_pageseg_mode: settings.psm });
+      const langCombo = settings.lang === 'eng' ? 'eng' : `${settings.lang}+eng`;
+      const worker = await Tesseract.createWorker(langCombo, 1, { logger: () => {} });
+      await worker.setParameters({ 
+        tessedit_pageseg_mode: settings.psm,
+        preserve_interword_spaces: '1',
+      });
       workers.push(worker);
     } catch (e) { console.warn('Worker init failed', e); }
   }
