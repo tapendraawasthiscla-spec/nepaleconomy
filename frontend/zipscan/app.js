@@ -356,9 +356,11 @@ function preprocessPDFCanvas(srcCanvas, doPreprocess) {
   const id = ctx.getImageData(0, 0, w, h);
   const d = id.data;
   
-  // Grayscale first (Luminance)
+  // Grayscale and strict Binarization (Erase watermarks)
+  // Any pixel lighter than 165 (light grey watermarks) becomes pure white.
   for (let i = 0; i < d.length; i += 4) {
-    const g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    let g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    if (g > 165) g = 255; 
     d[i] = d[i+1] = d[i+2] = g;
   }
   ctx.putImageData(id, 0, 0);
@@ -503,6 +505,11 @@ async function runOCRBatch(items, startPct, fileType) {
            const t = w.text.trim();
            // Ignore noise/borders: pure underscores, pipes, brackets, hyphens
            if (/^[_|\[\]\-\\/=]+$/.test(t)) return false; 
+           
+           // Ignore Emblem/Logo hallucinations (low confidence english/symbols in Nepali context)
+           if (w.confidence < 60 && /^[a-zA-Z&@#]+$/.test(t) && t.length < 4) return false;
+           if (w.confidence < 45 && t.length < 3) return false;
+           
            return t.length > 0;
         });
 
