@@ -229,8 +229,8 @@ async function handlePDF(file) {
   statTotal.textContent = parseInt(statTotal.textContent||0) + totalPages;
   showToast(`PDF: ${totalPages} page(s) — rendering each as high-res image…`, 'info');
 
-  // For super-fast processing, use user's scale (default 2.0x, can be 1.5x)
-  const RENDER_SCALE = settings.pdfScale;
+  // For super-accurate processing, force at least 2.0x scale (optimal for tessdata_best)
+  const RENDER_SCALE = Math.max(settings.pdfScale, 2.0);
 
   const items = [];
   for (let i = 1; i <= totalPages; i++) {
@@ -257,7 +257,7 @@ async function handlePDF(file) {
     // Step 2: Auto contrast stretch (normalise histogram)
     // Step 3: Unsharp mask / sharpening kernel
     // Step 4: Gentle adaptive threshold for crisp strokes
-    const processedDataUrl = preprocessPDFCanvas(canvas);
+    const processedDataUrl = preprocessPDFCanvas(canvas, settings.preprocess);
 
     items.push({
       name:        `${file.name} — Page ${i}`,
@@ -272,13 +272,50 @@ async function handlePDF(file) {
 }
 
 // ─── PDF Canvas Preprocessor ──────────────────────────────────────
-// Super-fast mode: we bypass slow JS pixel manipulation.
-// We export a high-quality JPEG directly from the canvas and let
-// Tesseract.js use its highly optimized WebAssembly Leptonica library
-// to do grayscale & Otsu binarization instantly.
-function preprocessPDFCanvas(srcCanvas) {
-  // image/jpeg is much faster to encode/decode than PNG
-  return srcCanvas.toDataURL('image/jpeg', 0.85);
+// High-Accuracy Mode: Runs a highly optimized 3x3 unsharp mask kernel
+// across the canvas to crisp up Devanagari Shirorekha (top-lines) 
+// without blocking the main thread for too long.
+function preprocessPDFCanvas(srcCanvas, doPreprocess) {
+  if (!doPreprocess) return srcCanvas.toDataURL('image/jpeg', 0.9);
+
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const dst = document.createElement('canvas');
+  dst.width = w; dst.height = h;
+  const ctx = dst.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(srcCanvas, 0, 0);
+
+  // Fast Unsharp Mask (Sharpen) Kernel
+  const id = ctx.getImageData(0, 0, w, h);
+  const d = id.data;
+  
+  // Grayscale first (Luminance)
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    d[i] = d[i+1] = d[i+2] = g;
+  }
+  ctx.putImageData(id, 0, 0);
+
+  const sh = ctx.getImageData(0, 0, w, h);
+  const src = new Uint8ClampedArray(sh.data);
+  const k = [0, -1, 0, -1, 5, -1, 0, -1, 0]; // Sharpening kernel
+  
+  // Apply 3x3 convolution
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      let r = 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          r += src[((y + ky) * w + (x + kx)) * 4] * k[(ky + 1) * 3 + (kx + 1)];
+        }
+      }
+      const idx = (y * w + x) * 4;
+      const val = Math.max(0, Math.min(255, r));
+      sh.data[idx] = sh.data[idx+1] = sh.data[idx+2] = val;
+    }
+  }
+  ctx.putImageData(sh, 0, 0);
+  
+  return dst.toDataURL('image/jpeg', 0.9);
 }
 
 // ─── Word Handler ─────────────────────────────────────────────────
@@ -352,7 +389,10 @@ async function runOCRBatch(items, startPct, fileType) {
   for (let w = 0; w < numWorkers; w++) {
     try {
       const langCombo = settings.lang === 'eng' ? 'eng' : `${settings.lang}+eng`;
-      const worker = await Tesseract.createWorker(langCombo, 1, { logger: () => {} });
+      const worker = await Tesseract.createWorker(langCombo, 1, {
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0_best',
+        logger: () => {} 
+      });
       await worker.setParameters({ 
         tessedit_pageseg_mode: settings.psm,
         preserve_interword_spaces: '1',
