@@ -69,7 +69,8 @@ const FILE_TYPES = {
   zip:   { exts: ['zip'], icon: '📦', label: 'ZIP', color: '#FCD34D', badgeClass: 'type-zip' },
   pdf:   { exts: ['pdf'], icon: '📄', label: 'PDF', color: '#FCA5A5', badgeClass: 'type-pdf' },
   word:  { exts: ['docx','doc'], icon: '📝', label: 'WORD', color: '#A5B4FC', badgeClass: 'type-word' },
-  text:  { exts: ['txt','csv','md'], icon: '📃', label: 'TEXT', color: '#34D399', badgeClass: 'type-text' },
+  excel: { exts: ['xlsx','xls'], icon: '📊', label: 'EXCEL', color: '#34D399', badgeClass: 'type-excel' },
+  text:  { exts: ['txt','csv','md'], icon: '📃', label: 'TEXT', color: '#9CA3AF', badgeClass: 'type-text' },
   image: { exts: [...IMAGE_EXTS], icon: '🖼️', label: 'IMAGE', color: '#67E8F9', badgeClass: 'type-image' },
 };
 
@@ -83,12 +84,12 @@ function detectFileType(name) {
 
 // ─── Mode Tabs ────────────────────────────────────────────────────
 const modeConfig = {
-  auto:   { accept: '.zip,.pdf,.docx,.doc,.txt,.csv,.jpg,.jpeg,.png,.bmp,.tif,.tiff,.webp,.gif,.heic,.heif', multiple: true, title: 'Drop any file here', subtitle: 'ZIP, PDF, Word, Images, TXT — up to <strong>500 MB</strong>', icon: '✨' },
+  auto:   { accept: '.zip,.pdf,.docx,.doc,.xlsx,.xls,.txt,.csv,.jpg,.jpeg,.png,.bmp,.tif,.tiff,.webp,.gif,.heic,.heif', multiple: true, title: 'Drop any file here', subtitle: 'ZIP, PDF, Word, Excel, Images, TXT — up to <strong>500 MB</strong>', icon: '✨' },
   zip:    { accept: '.zip', multiple: false, title: 'Drop your ZIP archive', subtitle: 'Extracts & OCRs all images inside — up to <strong>500 MB</strong>', icon: '📦' },
   pdf:    { accept: '.pdf', multiple: true, title: 'Drop PDF file(s)', subtitle: 'Renders each page & extracts text — up to <strong>200 MB</strong>', icon: '📄' },
   word:   { accept: '.docx,.doc', multiple: true, title: 'Drop Word document(s)', subtitle: 'Extracts text directly from .docx/.doc files', icon: '📝' },
   images: { accept: '.jpg,.jpeg,.png,.bmp,.tif,.tiff,.webp,.gif,.heic,.heif', multiple: true, title: 'Drop image file(s)', subtitle: 'OCR all selected images — multi-select supported', icon: '🖼️' },
-  text:   { accept: '.txt,.csv,.md', multiple: true, title: 'Drop text/CSV file(s)', subtitle: 'Reads and displays plain text content', icon: '📃' },
+  text:   { accept: '.txt,.csv,.md,.xlsx,.xls', multiple: true, title: 'Drop Data/Text file(s)', subtitle: 'Extracts spreadsheets and text files', icon: '📃' },
 };
 
 document.querySelectorAll('.mode-tab').forEach(tab => {
@@ -146,6 +147,7 @@ async function handleFiles(files) {
   const zips = files.filter(f => getExt(f.name) === 'zip');
   const pdfs = files.filter(f => getExt(f.name) === 'pdf');
   const words = files.filter(f => ['docx','doc'].includes(getExt(f.name)));
+  const excels= files.filter(f => ['xlsx','xls'].includes(getExt(f.name)));
   const texts = files.filter(f => ['txt','csv','md'].includes(getExt(f.name)));
   const imgs  = files.filter(f => isImage(f.name));
 
@@ -153,6 +155,7 @@ async function handleFiles(files) {
     if (zips.length)  for (const z of zips)  await handleZip(z);
     if (pdfs.length)  for (const p of pdfs)  await handlePDF(p);
     if (words.length) for (const w of words) await handleWord(w);
+    if (excels.length)for (const x of excels)await handleExcel(x);
     if (texts.length) for (const t of texts) await handleText(t);
     if (imgs.length)  await handleImages(imgs);
 
@@ -178,21 +181,42 @@ async function handleZip(file) {
   const zip = await JSZip.loadAsync(file, {
     onprogress: m => setProgress(m.percent * 0.2, `Extracting… ${Math.round(m.percent)}%`)
   });
+  
   const imageFiles = [];
-  zip.forEach((path, entry) => { if (!entry.dir && isImage(path)) imageFiles.push({ path, entry }); });
+  const otherFiles = [];
+  
+  zip.forEach((path, entry) => { 
+    if (entry.dir) return;
+    if (isImage(path)) imageFiles.push({ path, entry }); 
+    else if (['pdf','docx','doc','xlsx','xls','txt','csv'].includes(getExt(path))) otherFiles.push({ path, entry });
+  });
 
-  if (!imageFiles.length) { showToast(`No images found inside ${file.name}`, 'error'); return; }
-  statTotal.textContent = parseInt(statTotal.textContent||0) + imageFiles.length;
-
-  const items = [];
-  for (let i = 0; i < imageFiles.length; i++) {
-    if (state.cancelled) break;
-    const { path, entry } = imageFiles[i];
-    const blob = await entry.async('blob');
-    items.push({ name: path, blob, sourceFile: file.name });
-    setProgress(20 + (i/imageFiles.length)*10, `Extracting images… ${i+1}/${imageFiles.length}`);
+  if (!imageFiles.length && !otherFiles.length) { showToast(`No supported files found inside ${file.name}`, 'error'); return; }
+  
+  // Route non-image files first
+  if (otherFiles.length) {
+    setProgress(20, `Routing ${otherFiles.length} documents from ZIP...`);
+    for (const {path, entry} of otherFiles) {
+      const blob = await entry.async('blob');
+      // Create a File object so the other handlers can read it
+      const extractedFile = new File([blob], path, { type: blob.type || 'application/octet-stream' });
+      await handleFiles([extractedFile]);
+    }
   }
-  await runOCRBatch(items, 30, 'image');
+
+  // Route images to batch OCR
+  if (imageFiles.length) {
+    statTotal.textContent = parseInt(statTotal.textContent||0) + imageFiles.length;
+    const items = [];
+    for (let i = 0; i < imageFiles.length; i++) {
+      if (state.cancelled) break;
+      const { path, entry } = imageFiles[i];
+      const blob = await entry.async('blob');
+      items.push({ name: path, blob, sourceFile: file.name });
+      setProgress(20 + (i/imageFiles.length)*10, `Preparing images… ${i+1}/${imageFiles.length}`);
+    }
+    await runOCRBatch(items, 30, 'image');
+  }
 }
 
 // ─── Image Handler ────────────────────────────────────────────────
@@ -419,6 +443,50 @@ async function handleWord(file) {
     qEl.className = 'queue-item failed';
     statFailed.textContent = parseInt(statFailed.textContent||0) + 1;
     state.results.push({ filename: file.name, shortName: file.name, blob: null, imageUrl: null, text: '', confidence: 0, words: 0, status: 'failed', error: err.message, fileType: 'word' });
+  }
+}
+
+// ─── Excel Handler ────────────────────────────────────────────────
+async function handleExcel(file) {
+  if (typeof XLSX === 'undefined') {
+    showToast('SheetJS not loaded. Check your internet.', 'error'); return;
+  }
+  processingTitle.textContent = `Reading Excel: ${file.name}`;
+  processingModeBadge.textContent = '📊 Spreadsheet';
+  setProgress(10, 'Extracting Spreadsheet…');
+
+  const qEl = createQueueItem(file.name, 'processing');
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, {type: 'array'});
+    let text = '';
+    
+    workbook.SheetNames.forEach(sheetName => {
+      const sheet = workbook.Sheets[sheetName];
+      const csv = XLSX.utils.sheet_to_csv(sheet);
+      if (csv.trim()) {
+        text += `\n--- Sheet: ${sheetName} ---\n\n` + csv + '\n';
+      }
+    });
+    
+    text = text.trim();
+    const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
+
+    statTotal.textContent = parseInt(statTotal.textContent||0) + 1;
+    statProcessed.textContent = parseInt(statProcessed.textContent||0) + 1;
+    statWords.textContent = parseInt(statWords.textContent||0) + words;
+    qEl.className = 'queue-item done';
+    setProgress(90, `Excel extracted: ${words} words`);
+
+    state.results.push({
+      filename: file.name, shortName: file.name, blob: null, imageUrl: null,
+      text, confidence: 100, words, status: text ? 'success' : 'empty',
+      fileType: 'excel', sourceFile: file.name,
+    });
+  } catch (err) {
+    qEl.className = 'queue-item failed';
+    statFailed.textContent = parseInt(statFailed.textContent||0) + 1;
+    state.results.push({ filename: file.name, shortName: file.name, blob: null, imageUrl: null, text: '', confidence: 0, words: 0, status: 'failed', error: err.message, fileType: 'excel' });
   }
 }
 

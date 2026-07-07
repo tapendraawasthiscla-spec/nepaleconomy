@@ -121,7 +121,7 @@
           </div>
           <div class="upload-text">
             <h2 class="upload-title" id="uploadTitle">Drop any file here</h2>
-            <p class="upload-subtitle" id="uploadSubtitle">ZIP, PDF, Word, Images, TXT — up to <strong>500 MB</strong></p>
+            <p class="upload-subtitle" id="uploadSubtitle">ZIP, PDF, Word, Excel, Images, TXT — up to <strong>500 MB</strong></p>
           </div>
 
           <!-- Supported format pills -->
@@ -136,6 +136,8 @@
               <span class="format-tag tag-doc">PDF</span>
               <span class="format-tag tag-doc">DOCX</span>
               <span class="format-tag tag-doc">DOC</span>
+              <span class="format-tag tag-doc">XLSX</span>
+              <span class="format-tag tag-doc">XLS</span>
               <span class="format-tag tag-doc">TXT</span>
               <span class="format-tag tag-doc">CSV</span>
             </div>
@@ -159,7 +161,7 @@
           </div>
 
           <input type="file" id="fileInput" multiple
-            accept=".zip,.pdf,.docx,.doc,.txt,.csv,.jpg,.jpeg,.png,.bmp,.tif,.tiff,.webp,.gif,.heic,.heif"
+            accept=".zip,.pdf,.docx,.doc,.xlsx,.xls,.txt,.csv,.jpg,.jpeg,.png,.bmp,.tif,.tiff,.webp,.gif,.heic,.heif"
             style="display:none" />
         </div>
       </div>
@@ -382,6 +384,7 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script>
     // Set PDF.js worker
     if (typeof pdfjsLib !== 'undefined') {
