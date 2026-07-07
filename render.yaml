@@ -1,21 +1,4 @@
 services:
-  # ── ZipScan Pro — Static Site ──────────────────────────────────
-  - type: web
-    name: zipscan-pro
-    runtime: static
-    rootDir: zipscan
-    staticPublishPath: .
-    pullRequestPreviewsEnabled: false
-    headers:
-      - path: /*
-        name: Cache-Control
-        value: no-cache
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-
-  # ── NepalEconomy — FastAPI Backend ─────────────────────────────
   - type: web
     name: nepaleconomy
     runtime: docker
