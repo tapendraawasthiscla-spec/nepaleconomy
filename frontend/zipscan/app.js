@@ -386,7 +386,50 @@ async function runOCRBatch(items, startPct, fileType) {
         }
 
         const result = await worker.recognize(ocrInput);
-        const text   = result.data.text.trim();
+
+        // ─── Table Reconstruction & Noise Filter ───────────────────
+        // Tesseract struggles with table grid lines and often outputs them
+        // as garbage characters (|, _, [, ]). By using bounding boxes, we can 
+        // reconstruct the table purely from valid words and ignore grid lines.
+        const cleanWords = (result.data.words || []).filter(w => {
+           const t = w.text.trim();
+           // Ignore noise/borders: pure underscores, pipes, brackets, hyphens
+           if (/^[_|\[\]\-\\/=]+$/.test(t)) return false; 
+           return t.length > 0;
+        });
+
+        // Group words into rows based on vertical centre overlap
+        cleanWords.sort((a, b) => a.bbox.y0 - b.bbox.y0);
+        const rows = [];
+        let currentRow = [];
+        for (const w of cleanWords) {
+           if (currentRow.length === 0) {
+              currentRow.push(w);
+           } else {
+              const prev = currentRow[currentRow.length - 1];
+              const height = Math.max(1, prev.bbox.y1 - prev.bbox.y0);
+              const cy1 = (w.bbox.y0 + w.bbox.y1) / 2;
+              const cy2 = (prev.bbox.y0 + prev.bbox.y1) / 2;
+              // If vertical centres align within half a character height, it's the same row
+              if (Math.abs(cy1 - cy2) < height * 0.6) {
+                 currentRow.push(w);
+              } else {
+                 rows.push(currentRow);
+                 currentRow = [w];
+              }
+           }
+        }
+        if (currentRow.length > 0) rows.push(currentRow);
+
+        // Sort horizontally and separate columns with Tabs (great for Excel pasting)
+        const tableText = rows.map(row => {
+           row.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+           return row.map(w => w.text).join('\t');
+        }).join('\n');
+
+        const text = tableText || result.data.text.trim();
+        // ─────────────────────────────────────────────────────────
+
         const confidence = Math.round(result.data.confidence);
         const words  = text ? text.split(/\s+/).filter(Boolean).length : 0;
 
