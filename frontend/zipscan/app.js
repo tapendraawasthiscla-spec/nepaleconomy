@@ -229,9 +229,8 @@ async function handlePDF(file) {
   statTotal.textContent = parseInt(statTotal.textContent||0) + totalPages;
   showToast(`PDF: ${totalPages} page(s) — rendering each as high-res image…`, 'info');
 
-  // Use a high scale so small Nepali/Devanagari glyphs are clearly visible
-  // 3× default → ~240 DPI equivalent for A4
-  const RENDER_SCALE = Math.max(settings.pdfScale, 3.0);
+  // For super-fast processing, use user's scale (default 2.0x, can be 1.5x)
+  const RENDER_SCALE = settings.pdfScale;
 
   const items = [];
   for (let i = 1; i <= totalPages; i++) {
@@ -273,97 +272,13 @@ async function handlePDF(file) {
 }
 
 // ─── PDF Canvas Preprocessor ──────────────────────────────────────
-// Applies a full image-processing pipeline on the rendered canvas.
-// Returns a high-quality PNG dataURL suitable for Tesseract.
+// Super-fast mode: we bypass slow JS pixel manipulation.
+// We export a high-quality JPEG directly from the canvas and let
+// Tesseract.js use its highly optimized WebAssembly Leptonica library
+// to do grayscale & Otsu binarization instantly.
 function preprocessPDFCanvas(srcCanvas) {
-  const w = srcCanvas.width, h = srcCanvas.height;
-  const dst = document.createElement('canvas');
-  dst.width = w; dst.height = h;
-  const ctx = dst.getContext('2d');
-  ctx.drawImage(srcCanvas, 0, 0);
-
-  let id = ctx.getImageData(0, 0, w, h);
-  let d  = id.data;
-
-  // ── Step 1: Grayscale (luminance-weighted) ──────────────────────
-  for (let i = 0; i < d.length; i += 4) {
-    const g = Math.round(0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]);
-    d[i] = d[i+1] = d[i+2] = g;
-    d[i+3] = 255; // full opacity
-  }
-  ctx.putImageData(id, 0, 0);
-
-  // ── Step 2: Auto contrast stretch (percentile-based) ────────────
-  id = ctx.getImageData(0, 0, w, h); d = id.data;
-  // Build histogram
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < d.length; i += 4) hist[d[i]]++;
-  // Find 1st and 99th percentile to clip outliers
-  const totalPx = (w * h);
-  const clipLo = totalPx * 0.01, clipHi = totalPx * 0.99;
-  let lo = 0, hi = 255, acc = 0;
-  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= clipLo) { lo = v; break; } }
-  acc = 0;
-  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= (totalPx - clipHi)) { hi = v; break; } }
-  const range = hi - lo || 1;
-  for (let i = 0; i < d.length; i += 4) {
-    const v = Math.round(((d[i] - lo) / range) * 255);
-    d[i] = d[i+1] = d[i+2] = Math.max(0, Math.min(255, v));
-  }
-  ctx.putImageData(id, 0, 0);
-
-  // ── Step 3: Sharpen (unsharp-mask style kernel) ──────────────────
-  id = ctx.getImageData(0, 0, w, h); d = id.data;
-  const src3 = new Uint8ClampedArray(d);
-  // Stronger kernel for crisp Devanagari strokes
-  const K = [0, -1, 0, -1, 6, -1, 0, -1, 0]; // centre weight 6 (slightly stronger)
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      let sum = 0;
-      for (let ky = -1; ky <= 1; ky++) {
-        for (let kx = -1; kx <= 1; kx++) {
-          sum += src3[((y + ky) * w + (x + kx)) * 4] * K[(ky + 1) * 3 + (kx + 1)];
-        }
-      }
-      const idx = (y * w + x) * 4;
-      const val = Math.max(0, Math.min(255, sum));
-      d[idx] = d[idx+1] = d[idx+2] = val;
-    }
-  }
-  ctx.putImageData(id, 0, 0);
-
-  // ── Step 4: Local threshold (Sauvola-inspired, simplified) ───────
-  // Converts to near-binary while preserving ink variations
-  id = ctx.getImageData(0, 0, w, h); d = id.data;
-  const BLOCK = 20; // neighbourhood radius
-  const K_SAUVOLA = 0.15;
-  // Compute integral image for fast mean calculation
-  const gray = new Float32Array(w * h);
-  for (let i = 0; i < d.length; i += 4) gray[i >> 2] = d[i];
-  // For performance use simple block mean (Sauvola approximation)
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const y0 = Math.max(0, y - BLOCK), y1 = Math.min(h - 1, y + BLOCK);
-      const x0 = Math.max(0, x - BLOCK), x1 = Math.min(w - 1, x + BLOCK);
-      let sum = 0, cnt = 0;
-      // Sample sparse grid for speed
-      for (let sy = y0; sy <= y1; sy += 2) {
-        for (let sx = x0; sx <= x1; sx += 2) {
-          sum += gray[sy * w + sx]; cnt++;
-        }
-      }
-      const mean = sum / cnt;
-      const pixel = gray[y * w + x];
-      // Threshold: keep dark ink (below adaptive threshold)
-      const threshold = mean * (1 - K_SAUVOLA);
-      const out = pixel < threshold ? 0 : 255;
-      const idx = (y * w + x) * 4;
-      d[idx] = d[idx+1] = d[idx+2] = out;
-    }
-  }
-  ctx.putImageData(id, 0, 0);
-
-  return dst.toDataURL('image/png', 1.0);
+  // image/jpeg is much faster to encode/decode than PNG
+  return srcCanvas.toDataURL('image/jpeg', 0.85);
 }
 
 // ─── Word Handler ─────────────────────────────────────────────────
@@ -430,8 +345,9 @@ async function runOCRBatch(items, startPct, fileType) {
   let processed = 0;
   let totalWordsSoFar = parseInt(statWords.textContent || 0);
 
-  // Init workers
-  const numWorkers = settings.concurrent ? Math.min(4, total) : 1;
+  // Init workers (Maximize parallel processing for speed)
+  const maxHardwareWorkers = navigator.hardwareConcurrency ? Math.min(navigator.hardwareConcurrency, 12) : 4;
+  const numWorkers = settings.concurrent ? Math.min(maxHardwareWorkers, total) : 1;
   const workers = [];
   for (let w = 0; w < numWorkers; w++) {
     try {
