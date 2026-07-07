@@ -204,36 +204,166 @@ async function handleImages(files) {
   await runOCRBatch(items, 5, 'image');
 }
 
-// ─── PDF Handler ──────────────────────────────────────────────────
+// ─── PDF Handler — Pure Image-Based Pipeline ─────────────────────
+// Every page is rendered to a high-res canvas, preprocessed as an
+// image (grayscale → contrast → sharpen → threshold), then fed to
+// Tesseract as a raw image. No font/text layer is ever used.
 async function handlePDF(file) {
   if (typeof pdfjsLib === 'undefined') {
     showToast('PDF.js not loaded. Check your internet.', 'error'); return;
   }
   const settings = getSettings();
-  processingTitle.textContent = `Reading PDF: ${file.name}`;
-  processingModeBadge.textContent = '📄 PDF Document';
+  processingTitle.textContent = `Rendering PDF as images: ${file.name}`;
+  processingModeBadge.textContent = '📄 PDF → Image → OCR';
   setProgress(0, 'Loading PDF…');
 
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  // Disable font hinting — pure rasterisation only
+  const loadTask = pdfjsLib.getDocument({
+    data: await file.arrayBuffer(),
+    disableFontFace: true,   // don't use embedded fonts, rasterise only
+    nativeImageDecoderSupport: 'none',
+    useWorkerFetch: false,
+  });
+  const pdf = await loadTask.promise;
   const totalPages = pdf.numPages;
   statTotal.textContent = parseInt(statTotal.textContent||0) + totalPages;
-  showToast(`PDF loaded: ${totalPages} page(s) — starting OCR…`, 'info');
+  showToast(`PDF: ${totalPages} page(s) — rendering each as high-res image…`, 'info');
+
+  // Use a high scale so small Nepali/Devanagari glyphs are clearly visible
+  // 3× default → ~240 DPI equivalent for A4
+  const RENDER_SCALE = Math.max(settings.pdfScale, 3.0);
 
   const items = [];
   for (let i = 1; i <= totalPages; i++) {
     if (state.cancelled) break;
-    setProgress(5 + (i/totalPages)*15, `Rendering PDF page ${i}/${totalPages}…`);
-    const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: settings.pdfScale });
+    setProgress(5 + (i / totalPages) * 20, `Rendering page ${i}/${totalPages} at ${RENDER_SCALE}×…`);
+
+    const page     = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: RENDER_SCALE });
+
+    // Render onto an off-screen canvas (white background)
     const canvas = document.createElement('canvas');
-    canvas.width = viewport.width; canvas.height = viewport.height;
+    canvas.width  = viewport.width;
+    canvas.height = viewport.height;
     const ctx = canvas.getContext('2d');
+
+    // Fill white so transparent areas become white (not black)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
     await page.render({ canvasContext: ctx, viewport }).promise;
-    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-    items.push({ name: `${file.name} — Page ${i}`, blob, sourceFile: file.name, pageNum: i });
+
+    // ── Full image preprocessing pipeline ──────────────────────────
+    // Step 1: Grayscale
+    // Step 2: Auto contrast stretch (normalise histogram)
+    // Step 3: Unsharp mask / sharpening kernel
+    // Step 4: Gentle adaptive threshold for crisp strokes
+    const processedDataUrl = preprocessPDFCanvas(canvas);
+
+    items.push({
+      name:        `${file.name} — Page ${i}`,
+      dataUrl:     processedDataUrl,   // pre-processed image, ready for OCR
+      previewUrl:  canvas.toDataURL('image/jpeg', 0.7), // original (colour) for preview
+      sourceFile:  file.name,
+      pageNum:     i,
+    });
   }
-  await runOCRBatch(items, 20, 'pdf');
+
+  await runOCRBatch(items, 25, 'pdf');
+}
+
+// ─── PDF Canvas Preprocessor ──────────────────────────────────────
+// Applies a full image-processing pipeline on the rendered canvas.
+// Returns a high-quality PNG dataURL suitable for Tesseract.
+function preprocessPDFCanvas(srcCanvas) {
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const dst = document.createElement('canvas');
+  dst.width = w; dst.height = h;
+  const ctx = dst.getContext('2d');
+  ctx.drawImage(srcCanvas, 0, 0);
+
+  let id = ctx.getImageData(0, 0, w, h);
+  let d  = id.data;
+
+  // ── Step 1: Grayscale (luminance-weighted) ──────────────────────
+  for (let i = 0; i < d.length; i += 4) {
+    const g = Math.round(0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]);
+    d[i] = d[i+1] = d[i+2] = g;
+    d[i+3] = 255; // full opacity
+  }
+  ctx.putImageData(id, 0, 0);
+
+  // ── Step 2: Auto contrast stretch (percentile-based) ────────────
+  id = ctx.getImageData(0, 0, w, h); d = id.data;
+  // Build histogram
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4) hist[d[i]]++;
+  // Find 1st and 99th percentile to clip outliers
+  const totalPx = (w * h);
+  const clipLo = totalPx * 0.01, clipHi = totalPx * 0.99;
+  let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= clipLo) { lo = v; break; } }
+  acc = 0;
+  for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= (totalPx - clipHi)) { hi = v; break; } }
+  const range = hi - lo || 1;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = Math.round(((d[i] - lo) / range) * 255);
+    d[i] = d[i+1] = d[i+2] = Math.max(0, Math.min(255, v));
+  }
+  ctx.putImageData(id, 0, 0);
+
+  // ── Step 3: Sharpen (unsharp-mask style kernel) ──────────────────
+  id = ctx.getImageData(0, 0, w, h); d = id.data;
+  const src3 = new Uint8ClampedArray(d);
+  // Stronger kernel for crisp Devanagari strokes
+  const K = [0, -1, 0, -1, 6, -1, 0, -1, 0]; // centre weight 6 (slightly stronger)
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      let sum = 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          sum += src3[((y + ky) * w + (x + kx)) * 4] * K[(ky + 1) * 3 + (kx + 1)];
+        }
+      }
+      const idx = (y * w + x) * 4;
+      const val = Math.max(0, Math.min(255, sum));
+      d[idx] = d[idx+1] = d[idx+2] = val;
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+
+  // ── Step 4: Local threshold (Sauvola-inspired, simplified) ───────
+  // Converts to near-binary while preserving ink variations
+  id = ctx.getImageData(0, 0, w, h); d = id.data;
+  const BLOCK = 20; // neighbourhood radius
+  const K_SAUVOLA = 0.15;
+  // Compute integral image for fast mean calculation
+  const gray = new Float32Array(w * h);
+  for (let i = 0; i < d.length; i += 4) gray[i >> 2] = d[i];
+  // For performance use simple block mean (Sauvola approximation)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const y0 = Math.max(0, y - BLOCK), y1 = Math.min(h - 1, y + BLOCK);
+      const x0 = Math.max(0, x - BLOCK), x1 = Math.min(w - 1, x + BLOCK);
+      let sum = 0, cnt = 0;
+      // Sample sparse grid for speed
+      for (let sy = y0; sy <= y1; sy += 2) {
+        for (let sx = x0; sx <= x1; sx += 2) {
+          sum += gray[sy * w + sx]; cnt++;
+        }
+      }
+      const mean = sum / cnt;
+      const pixel = gray[y * w + x];
+      // Threshold: keep dark ink (below adaptive threshold)
+      const threshold = mean * (1 - K_SAUVOLA);
+      const out = pixel < threshold ? 0 : 255;
+      const idx = (y * w + x) * 4;
+      d[idx] = d[idx+1] = d[idx+2] = out;
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+
+  return dst.toDataURL('image/png', 1.0);
 }
 
 // ─── Word Handler ─────────────────────────────────────────────────
@@ -322,32 +452,57 @@ async function runOCRBatch(items, startPct, fileType) {
       const shortName = item.name.split('/').pop();
       const qEl = createQueueItem(shortName, 'processing');
       try {
-        const imgUrl = await prepareImage(item.blob, settings.quality, settings.preprocess);
-        const result = await worker.recognize(imgUrl);
-        const text = result.data.text.trim();
+        let ocrInput, displayUrl;
+
+        if (item.dataUrl) {
+          // ── PDF path: already preprocessed as image, use directly ──
+          // No additional processing — the image pipeline already ran
+          ocrInput   = item.dataUrl;
+          displayUrl = item.previewUrl || item.dataUrl; // show colour preview if available
+        } else {
+          // ── Image/ZIP path: standard preprocessing ─────────────────
+          ocrInput   = await prepareImage(item.blob, settings.quality, settings.preprocess);
+          displayUrl = ocrInput;
+        }
+
+        const result = await worker.recognize(ocrInput);
+        const text   = result.data.text.trim();
         const confidence = Math.round(result.data.confidence);
-        const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
+        const words  = text ? text.split(/\s+/).filter(Boolean).length : 0;
+
         qEl.className = 'queue-item done';
         totalWordsSoFar += words;
         statWords.textContent = totalWordsSoFar;
+
         state.results.push({
-          filename: item.name, shortName,
-          blob: item.blob, imageUrl: imgUrl,
+          filename:    item.name,
+          shortName,
+          blob:        item.blob || null,
+          imageUrl:    displayUrl,
           text, confidence, words,
-          status: text ? 'success' : 'empty',
-          fileType: fileType || 'image',
-          pageNum: item.pageNum,
-          sourceFile: item.sourceFile,
+          status:      text ? 'success' : 'empty',
+          fileType:    fileType || 'image',
+          pageNum:     item.pageNum,
+          sourceFile:  item.sourceFile,
         });
-        URL.revokeObjectURL(imgUrl);
+
+        // Only revoke object URLs (not dataURLs)
+        if (displayUrl && displayUrl.startsWith('blob:')) URL.revokeObjectURL(displayUrl);
+
       } catch (err) {
         qEl.className = 'queue-item failed';
         statFailed.textContent = parseInt(statFailed.textContent||0) + 1;
-        state.results.push({ filename: item.name, shortName, blob: item.blob, imageUrl: null, text: '', confidence: 0, words: 0, status: 'failed', error: err.message, fileType: fileType || 'image' });
+        state.results.push({
+          filename: item.name, shortName,
+          blob: item.blob||null, imageUrl: item.previewUrl||null,
+          text: '', confidence: 0, words: 0,
+          status: 'failed', error: err.message,
+          fileType: fileType || 'image',
+        });
       }
       processed++;
       statProcessed.textContent = parseInt(statProcessed.textContent||0) + 1;
-      const pct = startPct + Math.round((processed/total) * (95 - startPct));
+      const pct = startPct + Math.round((processed / total) * (95 - startPct));
       setProgress(pct, `OCR: ${processed}/${total} items`);
     }
   }
