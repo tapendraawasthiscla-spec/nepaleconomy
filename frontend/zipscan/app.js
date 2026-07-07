@@ -461,10 +461,30 @@ async function runOCRBatch(items, startPct, fileType) {
         }
         if (currentRow.length > 0) rows.push(currentRow);
 
-        // Sort horizontally and separate columns with Tabs (great for Excel pasting)
+        // Sort horizontally and separate true columns with Tabs (great for Excel),
+        // but use normal spaces for standard sentences to avoid huge gaps.
         const tableText = rows.map(row => {
            row.sort((a, b) => a.bbox.x0 - b.bbox.x0);
-           return row.map(w => w.text).join('\t');
+           let lineStr = '';
+           for (let i = 0; i < row.length; i++) {
+              if (i === 0) {
+                 lineStr += row[i].text;
+              } else {
+                 const prev = row[i - 1];
+                 const curr = row[i];
+                 // Calculate physical gap between previous word and current word
+                 const gap = curr.bbox.x0 - prev.bbox.x1;
+                 const prevHeight = Math.max(1, prev.bbox.y1 - prev.bbox.y0);
+                 
+                 // If the gap is > 1.5x the character height, it's a structural column jump
+                 if (gap > prevHeight * 1.5) {
+                    lineStr += '\t' + curr.text;
+                 } else {
+                    lineStr += ' ' + curr.text;
+                 }
+              }
+           }
+           return lineStr;
         }).join('\n');
 
         const text = tableText || result.data.text.trim();
