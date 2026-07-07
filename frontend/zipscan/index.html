@@ -226,9 +226,14 @@
         </div>
         <div class="settings-row settings-row-2">
           <label class="toggle-label">
+            <input type="checkbox" id="toggleDigitalParse" checked class="toggle-input" />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span>⚡ Native Parse (100% Digital PDF Accuracy)</span>
+          </label>
+          <label class="toggle-label">
             <input type="checkbox" id="togglePreprocess" checked class="toggle-input" />
             <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            <span>Image Pre-processing (Denoise + Sharpen)</span>
+            <span>📷 Deep OCR (For Scans)</span>
           </label>
           <label class="toggle-label">
             <input type="checkbox" id="toggleConfidence" checked class="toggle-input" />
@@ -384,6 +389,7 @@
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
   </script>
+  <script src="preeti.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

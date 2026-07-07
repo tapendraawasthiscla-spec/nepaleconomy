@@ -239,30 +239,98 @@ async function handlePDF(file) {
 
     const page     = await pdf.getPage(i);
     const viewport = page.getViewport({ scale: RENDER_SCALE });
+    const shortName = `${file.name} — Page ${i}`;
+    
+    // ── 1. Digital Parse Attempt (Native Text + Preeti Fix) ──
+    const useNative = document.getElementById('toggleDigitalParse')?.checked;
+    let nativeTextStr = '';
+    
+    if (useNative) {
+      try {
+        const textContent = await page.getTextContent();
+        let textLines = [];
+        let currentRow = [];
+        let lastY = -1;
+
+        // Group items into rows based on Y coordinates
+        const itemsList = textContent.items.sort((a, b) => b.transform[5] - a.transform[5]);
+        
+        for (const item of itemsList) {
+          const y = Math.round(item.transform[5]);
+          if (lastY === -1 || Math.abs(lastY - y) > 5) {
+            if (currentRow.length > 0) textLines.push(currentRow);
+            currentRow = [item];
+            lastY = y;
+          } else {
+            currentRow.push(item);
+          }
+        }
+        if (currentRow.length > 0) textLines.push(currentRow);
+
+        // Sort horizontally and space out correctly
+        nativeTextStr = textLines.map(row => {
+          row.sort((a, b) => a.transform[4] - b.transform[4]);
+          let lineStr = '';
+          for (let j = 0; j < row.length; j++) {
+            if (j === 0) {
+              lineStr += row[j].str;
+            } else {
+              const prev = row[j-1];
+              const curr = row[j];
+              const gap = curr.transform[4] - (prev.transform[4] + prev.width);
+              if (gap > 20) lineStr += '\t' + curr.str; // Tab for columns
+              else if (gap > 2) lineStr += ' ' + curr.str; // Space for words
+              else lineStr += curr.str;
+            }
+          }
+          return lineStr;
+        }).join('\n').trim();
+
+        // Check for Legacy Fonts and convert
+        if (window.isLikelyPreeti && window.isLikelyPreeti(nativeTextStr)) {
+          nativeTextStr = window.preetiToUnicode(nativeTextStr);
+        }
+      } catch(e) { console.warn("Native parse failed", e); }
+    }
 
     // Render onto an off-screen canvas (white background)
     const canvas = document.createElement('canvas');
     canvas.width  = viewport.width;
     canvas.height = viewport.height;
     const ctx = canvas.getContext('2d');
-
-    // Fill white so transparent areas become white (not black)
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     await page.render({ canvasContext: ctx, viewport }).promise;
+    const previewUrl = canvas.toDataURL('image/jpeg', 0.7);
 
-    // ── Full image preprocessing pipeline ──────────────────────────
-    // Step 1: Grayscale
-    // Step 2: Auto contrast stretch (normalise histogram)
-    // Step 3: Unsharp mask / sharpening kernel
-    // Step 4: Gentle adaptive threshold for crisp strokes
+    // If native parse succeeded and gave substantial text (not just an image wrapper)
+    if (nativeTextStr && nativeTextStr.length > 50) {
+      // Instantly finish this page
+      const qEl = createQueueItem(shortName, 'done');
+      state.results.push({
+        filename:    shortName,
+        shortName:   shortName,
+        blob:        null,
+        imageUrl:    previewUrl,
+        text:        nativeTextStr,
+        confidence:  100, // Native digital is 100% accurate
+        words:       nativeTextStr.split(/\s+/).filter(Boolean).length,
+        status:      'success',
+        fileType:    'pdf',
+        pageNum:     i,
+        sourceFile:  file.name,
+      });
+      totalWordsSoFar += nativeTextStr.split(/\s+/).filter(Boolean).length;
+      statWords.textContent = totalWordsSoFar;
+      continue; // Skip OCR completely for this page!
+    }
+
+    // ── 2. Fallback to Deep OCR (If no text or scanned page) ──
     const processedDataUrl = preprocessPDFCanvas(canvas, settings.preprocess);
-
     items.push({
-      name:        `${file.name} — Page ${i}`,
+      name:        shortName,
       dataUrl:     processedDataUrl,   // pre-processed image, ready for OCR
-      previewUrl:  canvas.toDataURL('image/jpeg', 0.7), // original (colour) for preview
+      previewUrl:  previewUrl, // original (colour) for preview
       sourceFile:  file.name,
       pageNum:     i,
     });
