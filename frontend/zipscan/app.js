@@ -698,4 +698,4 @@ function escapeHtml(str) {
 }
 
 // ─── Initialize ───────────────────────────────────────────────────
-showToast('ZipScan Pro ready! Upload a ZIP to begin.', 'info');
+showToast('ZipScan Pro ready! 🇳🇵 Nepali OCR set as default. Upload a ZIP to begin.', 'info');
